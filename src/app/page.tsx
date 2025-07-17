@@ -1,29 +1,27 @@
-'use client';
-import React, { useState, useEffect } from 'react';
-import { AuthProvider } from '@/components/AuthProvider';
-import { ChatWindow, ChatMessage } from '@/components/ChatWindow';
-import type { DomainSuggestion } from '@/types/index';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import Link from 'next/link';
-import { useUser, SignInButton, UserButton, SignOutButton } from '@clerk/nextjs';
+"use client";
+import React, { useState, useEffect } from "react";
+import { ChatWindow, ChatMessage } from "@/components/ChatWindow";
+import type { DomainSuggestion } from "@/types/index";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import Link from "next/link";
+import { useUser, SignInButton, UserButton, SignOutButton } from "@clerk/nextjs";
 
-function createNewConversation(name = 'New Conversation') {
-  return {
-    id: Date.now().toString(),
-    name,
-    messages: [] as ChatMessage[],
-    suggestions: [] as (DomainSuggestion & { available?: boolean })[],
-  };
-}
+// Conversation type for Supabase
+export type Conversation = {
+  id: string;
+  name: string;
+  created_at?: string;
+  user_id?: string;
+};
 
 export default function Home() {
-  const [conversations, setConversations] = useState<any[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [newConvoName, setNewConvoName] = useState('');
+  const [newConvoName, setNewConvoName] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [suggestions, setSuggestions] = useState<(DomainSuggestion & { available?: boolean })[]>([]);
   const { isSignedIn } = useUser();
