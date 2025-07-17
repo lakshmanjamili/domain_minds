@@ -1,7 +1,5 @@
-// TODO: Add Clerk <ClerkProvider> here for authentication
-// import { ClerkProvider } from '@clerk/nextjs';
-// export function AuthProvider({ children }: { children: React.ReactNode }) {
-//   return <ClerkProvider>{children}</ClerkProvider>;
-// }
+import { ClerkProvider } from '@clerk/nextjs';
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => children; 
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  return <ClerkProvider>{children}</ClerkProvider>;
+} 
