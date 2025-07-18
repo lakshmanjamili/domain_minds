@@ -135,3 +135,26 @@
     transform: none;
   }
 }
+
+.nav-link {
+  position: relative;
+  padding-bottom: 2px;
+}
+.nav-link.active,
+.nav-link:focus {
+  color: #6366f1;
+}
+.nav-link::after {
+  content: '';
+  display: block;
+  width: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #6366f1, #a21caf);
+  transition: width 0.2s;
+  border-radius: 2px;
+  margin: 0 auto;
+}
+.nav-link:hover::after,
+.nav-link:focus::after {
+  width: 100%;
+}
