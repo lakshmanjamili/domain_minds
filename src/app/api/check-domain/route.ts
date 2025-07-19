@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
     }
     // Stub: always available. Replace with real API call if needed.
     return NextResponse.json({ domain, available: true });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to check domain.' }, { status: 500 });
   }
 } 
