@@ -118,8 +118,8 @@ export async function POST(req: NextRequest) {
       userMessage,
       assistantMessage
     });
-  } catch (error) {
-    console.error('Error in suggest-domains:', error);
+  } catch {
+    console.error('Error in suggest-domains:', 'Failed to generate conversational response');
     return NextResponse.json({ error: 'Failed to generate conversational response.' }, { status: 500 });
   }
 } 
