@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ChatWindow } from '@/components/ChatWindow';
 import { Plus, MessageSquare, Trash2 } from 'lucide-react';
-import type { ChatMessage, DomainSuggestion } from '@/types/index';
+import type { ChatMessage, DomainWithStatus } from '@/types/index';
 import toast, { Toaster } from 'react-hot-toast';
 
 // Conversation type for Supabase
@@ -22,7 +22,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [suggestions, setSuggestions] = useState<(DomainSuggestion & { available?: boolean })[]>([]);
+  const [suggestions, setSuggestions] = useState<DomainWithStatus[]>([]);
   const { isSignedIn, user } = useUser();
   const [guestMessageCount, setGuestMessageCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -53,7 +53,7 @@ export default function Home() {
         if (data.conversations && data.conversations.length > 0) {
           setConversations(data.conversations);
           setActiveId(data.conversations[0].id);
-        } else {
+    } else {
           setConversations([]);
           setActiveId(null);
         }
@@ -160,24 +160,16 @@ export default function Home() {
 
       // Handle domain suggestions
       if (data.domainSuggestions && data.domainSuggestions.length > 0) {
-        // Check domain availability
-        const domainsWithAvailability = await Promise.all(
-          data.domainSuggestions.map(async (suggestion: DomainSuggestion) => {
-            try {
-              const checkRes = await fetch('/api/check-domain', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ domain: suggestion.domain }),
-              });
-              const checkData = await checkRes.json();
-              return { ...suggestion, available: checkData.available };
-            } catch {
-              return { ...suggestion, available: undefined };
-            }
-          })
-        );
-
-        setSuggestions(domainsWithAvailability);
+        // Domains now come with availability status from the agentic workflow
+        setSuggestions(data.domainSuggestions);
+        
+        // Show success message with count
+        const availableCount = data.domainSuggestions.filter((d: DomainWithStatus) => d.status === 'available').length;
+        if (availableCount > 0) {
+          toast.success(`Found ${availableCount} available domains! Check the green ones below.`);
+      } else {
+          toast.success('Domain suggestions generated with availability status!');
+        }
       }
 
       // Update conversation name if it's the first message
@@ -196,7 +188,7 @@ export default function Home() {
       // Remove optimistic user message on error
       setMessages(prev => prev.slice(0, -1));
     } finally {
-      setLoading(false);
+    setLoading(false);
     }
   };
 
@@ -230,9 +222,9 @@ export default function Home() {
   const handleDeleteConvo = async (id: string) => {
     try {
       const newConvos = conversations.filter((c) => c.id !== id);
-      setConversations(newConvos);
-      if (activeId === id) {
-        setActiveId(newConvos[0]?.id || null);
+    setConversations(newConvos);
+    if (activeId === id) {
+      setActiveId(newConvos[0]?.id || null);
         setMessages([]);
         setSuggestions([]);
       }
@@ -245,7 +237,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900">
-      {/* Sidebar */}
+        {/* Sidebar */}
       <aside className="w-full lg:w-80 bg-gradient-to-br from-gray-900/95 to-blue-900/90 border-r border-blue-100 dark:border-gray-800 p-0 flex flex-col min-h-[60vh] lg:min-h-screen shadow-2xl z-10 backdrop-blur-xl lg:rounded-tr-3xl lg:rounded-br-3xl transition-all duration-300">
         {/* Header with Welcome Message */}
         <div className="p-6 border-b border-blue-800/40">
@@ -284,7 +276,7 @@ export default function Home() {
               <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
               <p className="text-sm">No conversations yet.</p>
               <p className="text-xs mt-1">Start a new chat to begin!</p>
-            </div>
+          </div>
           ) : (
             conversations.map(c => (
               <Card
@@ -311,15 +303,15 @@ export default function Home() {
                     }}
                   >
                     <Trash2 className="w-3 h-3" />
-                  </Button>
+                </Button>
                 </div>
               </Card>
             ))
           )}
-        </div>
-      </aside>
+          </div>
+        </aside>
 
-      {/* Main Chat Area */}
+        {/* Main Chat Area */}
       <main className="flex-1 flex flex-col items-center justify-center p-4 lg:p-8">
         <div className="w-full max-w-5xl">
           <div className="text-center mb-8">
@@ -333,12 +325,12 @@ export default function Home() {
           </div>
 
           {isSignedIn && activeId ? (
-            <ChatWindow
+              <ChatWindow
               messages={messages}
               suggestions={suggestions}
-              loading={loading}
-              onSend={handleSend}
-            />
+                loading={loading}
+                onSend={handleSend}
+              />
           ) : !isSignedIn ? (
             <div className="text-center text-lg text-gray-500 dark:text-gray-400 mt-12 animate-fade-in-up bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-3xl p-8 shadow-xl" style={{animationDelay: '400ms'}}>
               <div className="flex flex-col items-center gap-4">
@@ -370,9 +362,9 @@ export default function Home() {
                 </div>
               </div>
             </div>
-          )}
-        </div>
-      </main>
+            )}
+          </div>
+        </main>
 
       {/* Toast Notifications */}
       <Toaster 
@@ -401,6 +393,6 @@ export default function Home() {
           },
         }}
       />
-    </div>
+      </div>
   );
 }

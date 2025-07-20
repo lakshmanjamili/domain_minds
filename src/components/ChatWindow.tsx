@@ -3,13 +3,14 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Card, CardContent } from '@/components/ui/card';
 import { Send, User, Bot, Sparkles } from 'lucide-react';
-import type { ChatMessage, DomainSuggestion } from '@/types/index';
+import type { ChatMessage } from '@/types/index';
+import type { DomainWithStatus } from '@/types/index';
+import { DomainCard } from './DomainCard';
 
 interface ChatWindowProps {
   messages: ChatMessage[];
-  suggestions: (DomainSuggestion & { available?: boolean })[];
+  suggestions: DomainWithStatus[];
   loading: boolean;
   onSend: (message: string) => void;
 }
@@ -135,39 +136,24 @@ export function ChatWindow({ messages, suggestions, loading, onSend }: ChatWindo
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1">
-                <h4 className="font-semibold text-gray-900 dark:text-white mb-3">
-                  Here are some domain suggestions for you:
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-yellow-500" />
+                  Agentic Domain Suggestions with Real-time Availability
                 </h4>
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {suggestions.map((suggestion, index) => (
-                    <Card key={index} className="border-l-4 border-l-blue-500 hover:shadow-md transition-all duration-200">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <h5 className="font-semibold text-blue-600 dark:text-blue-400">
-                            {suggestion.domain}
-                          </h5>
-                          <span 
-                            className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              suggestion.available === true 
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
-                                : suggestion.available === false 
-                                ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' 
-                                : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
-                            }`}
-                          >
-                            {suggestion.available === true 
-                              ? '✅ Available' 
-                              : suggestion.available === false 
-                              ? '❌ Taken' 
-                              : '🔍 Checking...'}
-                          </span>
-                        </div>
-                        <p className="text-gray-600 dark:text-gray-300 text-sm">
-                          {suggestion.explanation}
-                        </p>
-                      </CardContent>
-                    </Card>
+                    <DomainCard 
+                      key={`${suggestion.domain}-${index}`} 
+                      domain={suggestion} 
+                      index={index} 
+                    />
                   ))}
+                </div>
+                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <p className="text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    Real-time availability checked via Domainr API. Green domains are available for immediate purchase!
+                  </p>
                 </div>
               </div>
             </div>
