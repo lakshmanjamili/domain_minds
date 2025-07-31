@@ -8,14 +8,36 @@ import type { ChatMessage } from '@/types/index';
 import type { DomainWithStatus } from '@/types/index';
 import { DomainCard } from './DomainCard';
 
+interface ConversationHistoryItem {
+  type: 'message' | 'domains';
+  data: ChatMessage | DomainWithStatus[];
+  id: string;
+  messageIndex?: number;
+}
+
 interface ChatWindowProps {
   messages: ChatMessage[];
   suggestions: DomainWithStatus[];
   loading: boolean;
   onSend: (message: string) => void;
+  // Enhanced props for conversation history
+  conversationHistory?: {
+    messages: ChatMessage[];
+    domainSuggestions: Array<{
+      id: string;
+      suggestions: DomainWithStatus[];
+      messageIndex: number;
+    }>;
+  };
 }
 
-export function ChatWindow({ messages, suggestions, loading, onSend }: ChatWindowProps) {
+export function ChatWindow({ 
+  messages, 
+  suggestions, 
+  loading, 
+  onSend, 
+  conversationHistory 
+}: ChatWindowProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -25,7 +47,7 @@ export function ChatWindow({ messages, suggestions, loading, onSend }: ChatWindo
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, conversationHistory]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,11 +71,63 @@ export function ChatWindow({ messages, suggestions, loading, onSend }: ChatWindo
     "I'm building a fitness app, any domain ideas?"
   ];
 
+  // Create unified conversation timeline
+  const createConversationTimeline = () => {
+    if (!conversationHistory) {
+      // Fallback to legacy display - convert messages to ConversationHistoryItem format
+      const legacyTimeline: ConversationHistoryItem[] = messages.map((message, index) => ({
+        type: 'message',
+        data: message,
+        id: message.id || `message-${index}`,
+        messageIndex: index
+      }));
+      return { timeline: legacyTimeline, hasCurrentSuggestions: suggestions.length > 0 };
+    }
+
+    const timeline: ConversationHistoryItem[] = [];
+    const { messages: historyMessages, domainSuggestions } = conversationHistory;
+
+    // Add all messages first
+    historyMessages.forEach((message, index) => {
+      timeline.push({
+        type: 'message',
+        data: message,
+        id: message.id || `message-${index}`,
+        messageIndex: index
+      });
+
+      // Check if there are domain suggestions after this message
+      const suggestionsForThisMessage = domainSuggestions.find(
+        group => group.messageIndex === index + 1
+      );
+      
+      if (suggestionsForThisMessage) {
+        timeline.push({
+          type: 'domains',
+          data: suggestionsForThisMessage.suggestions,
+          id: suggestionsForThisMessage.id,
+          messageIndex: index + 1
+        });
+      }
+    });
+
+    // Add current suggestions if they're new (not in history yet)
+    const hasCurrentSuggestions = suggestions.length > 0 && 
+      !domainSuggestions.some(group => 
+        group.suggestions.length === suggestions.length &&
+        group.suggestions[0]?.domain === suggestions[0]?.domain
+      );
+
+    return { timeline, hasCurrentSuggestions };
+  };
+
+  const { timeline, hasCurrentSuggestions } = createConversationTimeline();
+
   return (
     <div className="flex flex-col h-full max-h-[80vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700">
       {/* Chat Messages */}
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        {messages.length === 0 && !loading && (
+        {timeline.length === 0 && !loading && (
           <div className="text-center space-y-6">
             <div className="flex justify-center">
               <div className="relative">
@@ -91,42 +165,84 @@ export function ChatWindow({ messages, suggestions, loading, onSend }: ChatWindo
           </div>
         )}
 
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`flex gap-4 ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}
-          >
-            {message.role === 'assistant' && (
-              <Avatar className="w-8 h-8 border-2 border-blue-200 dark:border-blue-800 flex-shrink-0">
-                <AvatarImage src="/ai-avatar.png" alt="AI Assistant" />
-                <AvatarFallback className="bg-gradient-to-br from-blue-400 to-purple-500 text-white">
-                  <Bot className="w-4 h-4" />
-                </AvatarFallback>
-              </Avatar>
-            )}
-            
-            <div
-              className={`max-w-[75%] rounded-2xl p-4 ${
-                message.role === 'user'
-                  ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white ml-auto'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white'
-              }`}
-            >
-              <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
-            </div>
+        {/* Unified Timeline Display */}
+        {timeline.map((item, index) => {
+          if (item.type === 'message') {
+            const message = item.data as ChatMessage;
+            return (
+              <div
+                key={item.id}
+                className={`flex gap-4 ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}
+              >
+                {message.role === 'assistant' && (
+                  <Avatar className="w-8 h-8 border-2 border-blue-200 dark:border-blue-800 flex-shrink-0">
+                    <AvatarImage src="/ai-avatar.png" alt="AI Assistant" />
+                    <AvatarFallback className="bg-gradient-to-br from-blue-400 to-purple-500 text-white">
+                      <Bot className="w-4 h-4" />
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+                
+                <div
+                  className={`max-w-[75%] rounded-2xl p-4 ${
+                    message.role === 'user'
+                      ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white ml-auto'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white'
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                </div>
 
-            {message.role === 'user' && (
-              <Avatar className="w-8 h-8 border-2 border-blue-200 dark:border-blue-800 flex-shrink-0">
-                <AvatarFallback className="bg-gradient-to-br from-gray-400 to-gray-600 text-white">
-                  <User className="w-4 h-4" />
-                </AvatarFallback>
-              </Avatar>
-            )}
-          </div>
-        ))}
+                {message.role === 'user' && (
+                  <Avatar className="w-8 h-8 border-2 border-blue-200 dark:border-blue-800 flex-shrink-0">
+                    <AvatarFallback className="bg-gradient-to-br from-gray-400 to-gray-600 text-white">
+                      <User className="w-4 h-4" />
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+              </div>
+            );
+          } else {
+            // Domain suggestions
+            const domains = item.data as DomainWithStatus[];
+            return (
+              <div key={item.id} className="space-y-4 animate-fade-in-up">
+                <div className="flex gap-4">
+                  <Avatar className="w-8 h-8 border-2 border-blue-200 dark:border-blue-800 flex-shrink-0">
+                    <AvatarImage src="/ai-avatar.png" alt="AI Assistant" />
+                    <AvatarFallback className="bg-gradient-to-br from-blue-400 to-purple-500 text-white">
+                      <Bot className="w-4 h-4" />
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-yellow-500" />
+                      Domain Suggestions with Real-time Availability
+                    </h4>
+                    <div className="space-y-4">
+                      {domains.map((suggestion, domainIndex) => (
+                        <DomainCard 
+                          key={`${suggestion.domain}-${domainIndex}`} 
+                          domain={suggestion} 
+                          index={domainIndex} 
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <p className="text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                        <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                        Real-time availability checked via GoDaddy API. Green domains are available for immediate purchase!
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+        })}
 
-        {/* Domain Suggestions */}
-        {suggestions.length > 0 && (
+        {/* Current/New Domain Suggestions (if not already in timeline) */}
+        {hasCurrentSuggestions && (
           <div className="space-y-4 animate-fade-in-up">
             <div className="flex gap-4">
               <Avatar className="w-8 h-8 border-2 border-blue-200 dark:border-blue-800 flex-shrink-0">
@@ -138,12 +254,12 @@ export function ChatWindow({ messages, suggestions, loading, onSend }: ChatWindo
               <div className="flex-1">
                 <h4 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-yellow-500" />
-                  Agentic Domain Suggestions with Real-time Availability
+                  New Domain Suggestions with Real-time Availability
                 </h4>
                 <div className="space-y-4">
                   {suggestions.map((suggestion, index) => (
                     <DomainCard 
-                      key={`${suggestion.domain}-${index}`} 
+                      key={`current-${suggestion.domain}-${index}`} 
                       domain={suggestion} 
                       index={index} 
                     />
@@ -152,7 +268,7 @@ export function ChatWindow({ messages, suggestions, loading, onSend }: ChatWindo
                 <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
                   <p className="text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
                     <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                    Real-time availability checked via Domainr API. Green domains are available for immediate purchase!
+                    Real-time availability checked via GoDaddy API. Green domains are available for immediate purchase!
                   </p>
                 </div>
               </div>

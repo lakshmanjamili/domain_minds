@@ -16,6 +16,14 @@ export type Conversation = {
   user_id?: string;
 };
 
+// Enhanced message type that can include domain suggestions
+export type ConversationItem = {
+  type: 'message' | 'domains';
+  data: ChatMessage | DomainWithStatus[];
+  id: string;
+  conversation_id?: string;
+};
+
 export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -23,6 +31,18 @@ export default function Home() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [suggestions, setSuggestions] = useState<DomainWithStatus[]>([]);
+  // New state to track all conversation items (messages + domain suggestions)
+  const [conversationHistory, setConversationHistory] = useState<{
+    messages: ChatMessage[];
+    domainSuggestions: Array<{
+      id: string;
+      suggestions: DomainWithStatus[];
+      messageIndex: number;
+    }>;
+  }>({
+    messages: [],
+    domainSuggestions: []
+  });
   const { isSignedIn, user } = useUser();
   const [guestMessageCount, setGuestMessageCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -34,7 +54,7 @@ export default function Home() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [conversationHistory.messages]);
 
   // Fetch conversations from Supabase on load
   useEffect(() => {
@@ -43,6 +63,7 @@ export default function Home() {
       setActiveId(null);
       setMessages([]);
       setSuggestions([]);
+      setConversationHistory({ messages: [], domainSuggestions: [] });
       return;
     }
     
@@ -53,7 +74,7 @@ export default function Home() {
         if (data.conversations && data.conversations.length > 0) {
           setConversations(data.conversations);
           setActiveId(data.conversations[0].id);
-    } else {
+        } else {
           setConversations([]);
           setActiveId(null);
         }
@@ -72,23 +93,51 @@ export default function Home() {
     if (!activeId) {
       setMessages([]);
       setSuggestions([]);
+      setConversationHistory({ messages: [], domainSuggestions: [] });
       return;
     }
     
     setMessagesLoading(true);
-    fetch(`/api/messages?conversationId=${activeId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.messages) {
-          setMessages(data.messages);
-        } else {
-          setMessages([]);
-        }
-        setSuggestions([]);
+    Promise.all([
+      fetch(`/api/messages?conversationId=${activeId}`).then(res => res.json()),
+      fetch(`/api/domain-suggestions?conversationId=${activeId}`).then(res => res.json()).catch(() => ({ suggestions: [] }))
+    ])
+      .then(([messagesData, suggestionsData]) => {
+        const fetchedMessages = messagesData.messages || [];
+        const fetchedSuggestions = suggestionsData.suggestions || [];
+        
+        setMessages(fetchedMessages);
+        setSuggestions([]); // Clear current suggestions
+        
+        // Build conversation history with proper ordering
+        const domainSuggestionGroups = fetchedSuggestions.reduce((acc: any[], suggestion: any) => {
+          const messageIndex = fetchedMessages.findIndex((msg: ChatMessage) => 
+            msg.id && suggestion.message_id === msg.id
+          );
+          
+          if (messageIndex !== -1) {
+            const existingGroup = acc.find(group => group.messageIndex === messageIndex);
+            if (existingGroup) {
+              existingGroup.suggestions.push(suggestion);
+            } else {
+              acc.push({
+                id: `suggestions-${messageIndex}`,
+                suggestions: [suggestion],
+                messageIndex: messageIndex + 1 // After the assistant response
+              });
+            }
+          }
+          return acc;
+        }, []);
+        
+        setConversationHistory({
+          messages: fetchedMessages,
+          domainSuggestions: domainSuggestionGroups
+        });
       })
       .catch((error) => {
-        console.error('Error fetching messages:', error);
-        toast.error('Failed to load messages');
+        console.error('Error fetching conversation data:', error);
+        toast.error('Failed to load conversation');
       })
       .finally(() => {
         setMessagesLoading(false);
@@ -111,7 +160,8 @@ export default function Home() {
     }
 
     setLoading(true);
-    setSuggestions([]);
+    // Don't clear suggestions anymore - let them persist
+    // setSuggestions([]);
 
     // Add user message optimistically
     const userMessage: ChatMessage = {
@@ -119,6 +169,12 @@ export default function Home() {
       content: message,
       conversation_id: activeId || undefined
     };
+    
+    // Update conversation history
+    setConversationHistory(prev => ({
+      ...prev,
+      messages: [...prev.messages, userMessage]
+    }));
     setMessages(prev => [...prev, userMessage]);
 
     try {
@@ -140,40 +196,65 @@ export default function Home() {
       
       // Replace optimistic user message with stored message
       if (data.userMessage) {
+        setConversationHistory(prev => ({
+          ...prev,
+          messages: prev.messages.map((msg, idx) => 
+            idx === prev.messages.length - 1 ? data.userMessage : msg
+          )
+        }));
         setMessages(prev => prev.map((msg, idx) => 
           idx === prev.length - 1 ? data.userMessage : msg
         ));
       }
 
       // Add assistant message
+      let assistantMessage: ChatMessage;
       if (data.assistantMessage) {
-        setMessages(prev => [...prev, data.assistantMessage]);
+        assistantMessage = data.assistantMessage;
       } else if (data.assistantReply) {
         // Fallback if message wasn't stored
-        const assistantMessage: ChatMessage = {
+        assistantMessage = {
           role: 'assistant',
           content: data.assistantReply,
           conversation_id: activeId || undefined
         };
+      }
+
+      if (assistantMessage!) {
+        setConversationHistory(prev => ({
+          ...prev,
+          messages: [...prev.messages, assistantMessage]
+        }));
         setMessages(prev => [...prev, assistantMessage]);
       }
 
-      // Handle domain suggestions
+      // Handle domain suggestions - ADD them to conversation history instead of replacing
       if (data.domainSuggestions && data.domainSuggestions.length > 0) {
-        // Domains now come with availability status from the agentic workflow
+        const newSuggestionGroup = {
+          id: `suggestions-${Date.now()}`,
+          suggestions: data.domainSuggestions,
+          messageIndex: conversationHistory.messages.length + 1 // After the new assistant message
+        };
+        
+        setConversationHistory(prev => ({
+          ...prev,
+          domainSuggestions: [...prev.domainSuggestions, newSuggestionGroup]
+        }));
+        
+        // Also update the current suggestions for the ChatWindow component
         setSuggestions(data.domainSuggestions);
         
         // Show success message with count
         const availableCount = data.domainSuggestions.filter((d: DomainWithStatus) => d.status === 'available').length;
         if (availableCount > 0) {
           toast.success(`Found ${availableCount} available domains! Check the green ones below.`);
-      } else {
+        } else {
           toast.success('Domain suggestions generated with availability status!');
         }
       }
 
       // Update conversation name if it's the first message
-      if (messages.length === 0 && isSignedIn && activeId && data.intent === 'domain_request') {
+      if (conversationHistory.messages.length === 0 && isSignedIn && activeId && data.intent === 'domain_request') {
         const conversationName = message.length > 50 ? message.substring(0, 50) + '...' : message;
         setConversations(prev => prev.map(conv => 
           conv.id === activeId ? { ...conv, name: conversationName } : conv
@@ -185,10 +266,14 @@ export default function Home() {
       console.error('Error:', error);
       toast.error('Failed to generate response. Please try again.');
       
-      // Remove optimistic user message on error
+      // Remove optimistic messages on error
+      setConversationHistory(prev => ({
+        ...prev,
+        messages: prev.messages.slice(0, -1)
+      }));
       setMessages(prev => prev.slice(0, -1));
     } finally {
-    setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -211,6 +296,7 @@ export default function Home() {
         setActiveId(data.conversation.id);
         setMessages([]);
         setSuggestions([]);
+        setConversationHistory({ messages: [], domainSuggestions: [] });
         toast.success('New conversation created!');
       }
     } catch (error) {
@@ -227,6 +313,7 @@ export default function Home() {
       setActiveId(newConvos[0]?.id || null);
         setMessages([]);
         setSuggestions([]);
+        setConversationHistory({ messages: [], domainSuggestions: [] });
       }
       toast.success('Conversation deleted');
     } catch (error) {
@@ -330,6 +417,7 @@ export default function Home() {
               suggestions={suggestions}
                 loading={loading}
                 onSend={handleSend}
+                conversationHistory={conversationHistory}
               />
           ) : !isSignedIn ? (
             <div className="text-center text-lg text-gray-500 dark:text-gray-400 mt-12 animate-fade-in-up bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-3xl p-8 shadow-xl" style={{animationDelay: '400ms'}}>
